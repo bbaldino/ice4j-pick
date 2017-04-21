@@ -70,28 +70,27 @@ public class Client
             @Override
             public void run()
             {
-                int packetSize = 1500;
-                int ONE_HUNDRED_THOUSAND = 100000;
-                int TEN_MILLION = 10000000;
-                int numPackets = ONE_HUNDRED_THOUSAND;
-                byte[] data = new byte[packetSize];
-                DatagramPacket p = new DatagramPacket(data, packetSize);
-                long startTime = System.currentTimeMillis();
-                for (int i = 0; i < numPackets; ++i)
+                byte[] data = new byte[PACKET_SIZE_BYTES];
+                DatagramPacket p = new DatagramPacket(data, PACKET_SIZE_BYTES);
+                DatagramSocket s = iceMediaStream.getComponents().get(0).getSocket();
+                long startTime = System.nanoTime();
+                for (int i = 0; i < NUM_PACKETS_TO_SEND; ++i)
                 {
                     try
                     {
-                        iceMediaStream.getComponents().get(0).getSocketWrapper().send(p);
-
-                    } catch (IOException e)
+                        s.send(p);
+                    }
+                    catch (IOException e)
                     {
                         System.out.println("Error sending data: " + e.toString());
                     }
                 }
-                long finishTime = System.currentTimeMillis();
-                System.out.println("Sent " + (numPackets * packetSize) + " bytes in " + (finishTime - startTime) +
-                        "ms at a rate of " +
-                    (numPackets * packetSize * 8 / 1000) / ((finishTime - startTime) / 1000.0) + "mbps");
+                long finishTime = System.nanoTime();
+                System.out.println("Sent " + (NUM_PACKETS_TO_SEND * PACKET_SIZE_BYTES) + " bytes in " +
+                        (finishTime - startTime) +
+                        " nanoseconds at a rate of " +
+                        getBitrateMbps(NUM_PACKETS_TO_SEND * PACKET_SIZE_BYTES, finishTime - startTime) +
+                        "mbps");
             }
         }.start();
     }
@@ -142,7 +141,7 @@ public class Client
             RemoteCandidate remoteCandidate = candidateMessage.toRemoteCandidate(iceMediaStream.getComponents().get(0));
             System.out.println("Got remote candidate: " + remoteCandidate.toString());
             iceMediaStream.getComponents().get(0).addRemoteCandidate(remoteCandidate);
-            if (/*iceMediaStream.getComponents().get(0).getRemoteCandidateCount() == 2 */ !iceAgent.isStarted())
+            if (!iceAgent.isStarted())
             {
                 iceAgent.startConnectivityEstablishment();
             }

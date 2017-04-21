@@ -15,6 +15,20 @@ import java.net.*;
 public class ClientServerCommon
 {
     /**
+     * Test rig values
+     */
+    protected static int ONE_HUNDRED_THOUSAND = 100000;
+    protected static int TEN_MILLION = 10000000;
+    protected static int NUM_PACKETS_TO_SEND = ONE_HUNDRED_THOUSAND;
+    protected static int PACKET_SIZE_BYTES = 1500;
+
+    protected double getBitrateMbps(int bytesTransferred, long timeNanos)
+    {
+        return (bytesTransferred * 8 / 1000000) / (timeNanos / 1000000000.0);
+    }
+
+
+    /**
      * Raw socket used to receive and send signaling messages
      */
     protected DatagramSocket signalingSocket;

@@ -53,7 +53,9 @@ public class Server
                 System.out.println("ICE property change: " + evt.getPropertyName() + " -> " + evt.getNewValue());
                 if (evt.getNewValue() == IceProcessingState.COMPLETED)
                 {
-                    IceSocketWrapper s = iceMediaStream.getComponents().get(0).getSocketWrapper();
+                    //IceSocketWrapper s = iceMediaStream.getComponents().get(0).getSocketWrapper();
+                    //ComponentSocket s = iceMediaStream.getComponents().get(0).getComponentSocket();
+                    DatagramSocket s = iceMediaStream.getComponents().get(0).getSocket();
                     startDataLoop(s);
                 }
             }
@@ -64,7 +66,7 @@ public class Server
         }
     }
 
-    protected void startDataLoop(IceSocketWrapper socket)
+    protected void startDataLoop(DatagramSocket socket)
     {
         new Thread("Server app reader thread") {
             @Override
@@ -75,9 +77,9 @@ public class Server
                 int numPacketsReceived = 0;
                 try
                 {
-                    socket.getUDPSocket().setSoTimeout(10);
-                    socket.getUDPSocket().setReceiveBufferSize(106496);
-                    System.out.println("Receive socket buffer size is " + socket.getUDPSocket().getReceiveBufferSize());
+                    socket.setSoTimeout(10);
+                    socket.setReceiveBufferSize(106496);
+                    System.out.println("Receive socket buffer size is " + socket.getReceiveBufferSize());
                 } catch (SocketException e)
                 {
                     System.out.println("Error setting socket config " + e.toString());
@@ -90,15 +92,17 @@ public class Server
                         socket.receive(p);
                         if (firstPacketTime < 0)
                         {
-                            firstPacketTime = System.currentTimeMillis();
+                            firstPacketTime = System.nanoTime();
                         }
                         numPacketsReceived++;
                     }
                     catch (SocketTimeoutException e)
                     {
-                        long lastPacketTime = System.currentTimeMillis() - 10;
+                        long lastPacketTime = System.nanoTime() - 10000000; // 10ms in nanos
                         System.out.println("Received " + numPacketsReceived + " packets in " +
-                                (lastPacketTime - firstPacketTime) + "ms");
+                                (lastPacketTime - firstPacketTime) + " nanoseconds" + " at a rate of " +
+                                getBitrateMbps(numPacketsReceived * PACKET_SIZE_BYTES, lastPacketTime - firstPacketTime) +
+                                "mbps");
                         break;
                     }
                     catch (IOException e)
