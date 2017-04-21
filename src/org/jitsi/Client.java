@@ -13,6 +13,10 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
 import java.util.logging.Level;
 
 /**
@@ -61,6 +65,41 @@ public class Client
         });
     }
 
+    Map<Integer, Integer> packetTypesSent = new HashMap<>();
+    private Random rand = new Random();
+    protected void setPacketType(byte[] data)
+    {
+        int num = rand.nextInt(100);
+        int packetType;
+        // 33% audio rtp packet
+        if (num < 33)
+        {
+            packetType = AUDIO_RTP_PACKET_TYPE;
+        }
+        // 2% audio rtcp packet
+        else if (num < 35)
+        {
+            packetType = AUDIO_RTCP_PACKET_TYPE;
+        }
+        // 60% chance video rtp packet
+        else if (num < 95)
+        {
+            packetType = VIDEO_RTP_PACKET_TYPE;
+        }
+        // 2% chance video rtcp packet
+        else if (num < 97)
+        {
+            packetType = VIDEO_RTCP_PACKET_TYPE;
+        }
+        // 3% chance dtls packet
+        else
+        {
+            packetType = DTLS_PACKET_TYPE;
+        }
+        packetTypesSent.put(packetType, packetTypesSent.getOrDefault(packetType, 0) + 1);
+        ByteBuffer.wrap(data).putInt(packetType);
+    }
+
     protected void startDataLoop()
     {
         new Thread() {
@@ -73,6 +112,7 @@ public class Client
                 long startTime = System.nanoTime();
                 for (int i = 0; i < NUM_PACKETS_TO_SEND; ++i)
                 {
+                    setPacketType(data);
                     try
                     {
                         s.send(p);
@@ -83,11 +123,13 @@ public class Client
                     }
                 }
                 long finishTime = System.nanoTime();
-                System.out.println("Sent " + (NUM_PACKETS_TO_SEND * PACKET_SIZE_BYTES) + " bytes in " +
+                long bytesSent = (long)NUM_PACKETS_TO_SEND * (long)PACKET_SIZE_BYTES;
+                System.out.println("Sent " + (NUM_PACKETS_TO_SEND) + " packets in " +
                         (finishTime - startTime) +
                         " nanoseconds at a rate of " +
-                        getBitrateMbps(NUM_PACKETS_TO_SEND * PACKET_SIZE_BYTES, finishTime - startTime) +
+                        getBitrateMbps(bytesSent, finishTime - startTime) +
                         "mbps");
+                System.out.println(packetTypesSent.toString());
             }
         }.start();
     }

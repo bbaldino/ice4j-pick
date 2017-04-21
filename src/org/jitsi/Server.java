@@ -2,18 +2,16 @@ package org.jitsi;
 
 import org.ice4j.Transport;
 import org.ice4j.ice.*;
-import org.ice4j.socket.IceSocketWrapper;
+import org.ice4j.socket.MultiplexedDatagramSocket;
+import org.ice4j.socket.MultiplexingDatagramSocket;
 import org.jitsi.messages.CandidateMessage;
 import org.jitsi.messages.ConnectMessage;
 import org.jitsi.messages.Message;
 
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
 import java.io.IOException;
 import java.net.*;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.nio.ByteBuffer;
+import java.util.*;
 
 /**
  * Created by bbaldino on 4/17/17.
@@ -32,7 +30,7 @@ public class Server
         String ufrag;
         String pass;
     }
-    protected Map<InetAddress, Peer> peers = new HashMap<InetAddress, Peer>();
+    protected Map<InetAddress, Peer> peers = new HashMap<>();
 
     public Server()
             throws IOException
@@ -51,8 +49,8 @@ public class Server
             System.out.println("ICE property change: " + evt.getPropertyName() + " -> " + evt.getNewValue());
             if (evt.getNewValue() == IceProcessingState.COMPLETED)
             {
-                DatagramSocket s = iceMediaStream.getComponents().get(0).getSocket();
-                startDataLoop(s);
+                MultiplexingDatagramSocket s = iceMediaStream.getComponents().get(0).getSocket();
+                startDataLoops(s);
             }
         });
 
@@ -62,51 +60,133 @@ public class Server
         }
     }
 
-    protected void startDataLoop(DatagramSocket socket)
+    protected int getPacketType(DatagramPacket packet)
     {
-        new Thread("Server app reader thread") {
+        return ByteBuffer.wrap(packet.getData()).getInt();
+    }
+
+    Map<Integer, Integer> packetTypeCounts = new HashMap<>();
+    long firstPacketTime = -1;
+    protected Thread createDataLoop(String name, MultiplexingDatagramSocket socket, int packetType)
+    {
+        return new Thread(name) {
             @Override
             public void run()
             {
                 byte[] data = new byte[1500];
                 DatagramPacket p = new DatagramPacket(data, 1500);
+                MultiplexedDatagramSocket s = null;
                 int numPacketsReceived = 0;
+                packetTypeCounts.put(packetType, 0);
                 try
                 {
-                    socket.setSoTimeout(10);
-                    socket.setReceiveBufferSize(106496);
-                    System.out.println("Receive socket buffer size is " + socket.getReceiveBufferSize());
+                    s = socket.getSocket(packet -> getPacketType(packet) == packetType);
+                    long currTime = System.nanoTime();
+                    if (firstPacketTime == -1 || currTime < firstPacketTime)
+                    {
+                        firstPacketTime = currTime;
+                    }
                 } catch (SocketException e)
                 {
-                    System.out.println("Error setting socket config " + e.toString());
+                    e.printStackTrace();
                 }
-                long firstPacketTime = -1;
                 while (running)
                 {
                     try
                     {
-                        socket.receive(p);
-                        if (firstPacketTime < 0)
-                        {
-                            firstPacketTime = System.nanoTime();
-                        }
+                        s.receive(p);
                         numPacketsReceived++;
+                        packetTypeCounts.put(packetType, packetTypeCounts.get(packetType) + 1);
                     }
                     catch (SocketTimeoutException e)
                     {
-                        long lastPacketTime = System.nanoTime() - 10000000; // 10ms in nanos
-                        System.out.println("Received " + numPacketsReceived + " packets in " +
-                                (lastPacketTime - firstPacketTime) + " nanoseconds" + " at a rate of " +
-                                getBitrateMbps(numPacketsReceived * PACKET_SIZE_BYTES, lastPacketTime - firstPacketTime) +
-                                "mbps");
-                        break;
+                        if (numPacketsReceived > 0)
+                        {
+                            System.out.println(name + " thread done receiving, received " + numPacketsReceived + " packets");
+                            break;
+                        }
+
                     }
                     catch (IOException e)
                     {
-                        System.out.println("Error sending data: " + e.toString());
+                        e.printStackTrace();
                     }
-
                 }
+            }
+        };
+
+    }
+
+    protected void startDataLoops(MultiplexingDatagramSocket socket)
+    {
+        byte[] data = new byte[1500];
+        DatagramPacket p = new DatagramPacket(data, 1500);
+
+        try
+        {
+            socket.setSoTimeout(100);
+            socket.setReceiveBufferSize(106496);
+            System.out.println("Receive socket buffer size is " + socket.getReceiveBufferSize());
+        } catch (SocketException e)
+        {
+            System.out.println("Error setting socket config " + e.toString());
+        }
+
+        long startTime = System.nanoTime();
+        List<Thread> threads = new ArrayList<>();
+        Thread audioRtp =
+                createDataLoop("audio rtp", socket, AUDIO_RTP_PACKET_TYPE);
+        threads.add(audioRtp);
+        audioRtp.start();
+
+        Thread audioRtcp =
+                createDataLoop("audio rtcp", socket, AUDIO_RTCP_PACKET_TYPE);
+        threads.add(audioRtcp);
+        audioRtcp.start();
+
+        Thread videoRtp =
+                createDataLoop("video rtp", socket, VIDEO_RTP_PACKET_TYPE);
+        threads.add(videoRtp);
+        videoRtp.start();
+
+        Thread videoRtcp =
+                createDataLoop("video rtcp", socket, VIDEO_RTCP_PACKET_TYPE);
+        threads.add(videoRtcp);
+        videoRtcp.start();
+
+        Thread dtls =
+                createDataLoop("dtls", socket, DTLS_PACKET_TYPE);
+        threads.add(dtls);
+        dtls.start();
+
+        new Thread("waiting thread") {
+            @Override
+            public void run()
+            {
+                for (Thread t : threads)
+                {
+                    try
+                    {
+                        t.join();
+                    } catch (InterruptedException e)
+                    {
+                        e.printStackTrace();
+                    }
+                }
+                long finishTime = System.nanoTime();
+                System.out.println("All threads finished, packet counts: " + packetTypeCounts.toString());
+                long totalPackets = 0;
+                for (Map.Entry<Integer, Integer> e : packetTypeCounts.entrySet())
+                {
+                    totalPackets += e.getValue();
+                }
+                System.out.println("Coarse start time: " + startTime + ", finer start time: " + firstPacketTime);
+                // The socket timeout is 100milliseconds, so we'll subtract that here when calculating
+                //  the total time it took
+                System.out.println("Received " + totalPackets + " packets total in " +
+                        (finishTime - firstPacketTime - 100000000) + " nanoseconds at a rate of " +
+                        getBitrateMbps(totalPackets * PACKET_SIZE_BYTES,
+                                (finishTime - firstPacketTime - 100000000)));
             }
         }.start();
     }

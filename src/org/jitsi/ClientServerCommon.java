@@ -19,10 +19,16 @@ public class ClientServerCommon
      */
     protected static int ONE_HUNDRED_THOUSAND = 100000;
     protected static int TEN_MILLION = 10000000;
-    protected static int NUM_PACKETS_TO_SEND = ONE_HUNDRED_THOUSAND;
+    protected static int NUM_PACKETS_TO_SEND = TEN_MILLION; //ONE_HUNDRED_THOUSAND;
     protected static int PACKET_SIZE_BYTES = 1500;
 
-    protected double getBitrateMbps(int bytesTransferred, long timeNanos)
+    protected static int AUDIO_RTP_PACKET_TYPE = 1;
+    protected static int AUDIO_RTCP_PACKET_TYPE = 2;
+    protected static int VIDEO_RTP_PACKET_TYPE = 3;
+    protected static int VIDEO_RTCP_PACKET_TYPE = 4;
+    protected static int DTLS_PACKET_TYPE = 5;
+
+    protected double getBitrateMbps(long bytesTransferred, long timeNanos)
     {
         return (bytesTransferred * 8 / 1000000) / (timeNanos / 1000000000.0);
     }
