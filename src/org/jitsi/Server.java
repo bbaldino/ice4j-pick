@@ -46,20 +46,16 @@ public class Server
 
         iceMediaStream = iceAgent.createMediaStream("stream");
         Component component = iceAgent.createComponent(iceMediaStream, Transport.UDP, 10000, 10000, 10100);
-        iceAgent.addStateChangeListener(new PropertyChangeListener()
+        iceAgent.addStateChangeListener(evt ->
         {
-            public void propertyChange(PropertyChangeEvent evt)
+            System.out.println("ICE property change: " + evt.getPropertyName() + " -> " + evt.getNewValue());
+            if (evt.getNewValue() == IceProcessingState.COMPLETED)
             {
-                System.out.println("ICE property change: " + evt.getPropertyName() + " -> " + evt.getNewValue());
-                if (evt.getNewValue() == IceProcessingState.COMPLETED)
-                {
-                    //IceSocketWrapper s = iceMediaStream.getComponents().get(0).getSocketWrapper();
-                    //ComponentSocket s = iceMediaStream.getComponents().get(0).getComponentSocket();
-                    DatagramSocket s = iceMediaStream.getComponents().get(0).getSocket();
-                    startDataLoop(s);
-                }
+                DatagramSocket s = iceMediaStream.getComponents().get(0).getSocket();
+                startDataLoop(s);
             }
         });
+
         for (LocalCandidate candidate : component.getLocalCandidates())
         {
             System.out.println("Got local candidate: " + candidate);

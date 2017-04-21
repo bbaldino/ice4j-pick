@@ -50,16 +50,13 @@ public class Client
             e.printStackTrace();
         }
 
-        iceAgent.addStateChangeListener(new PropertyChangeListener()
+        iceAgent.addStateChangeListener(evt ->
         {
-            public void propertyChange(PropertyChangeEvent evt)
+            System.out.println("ICE property change: " + evt.getPropertyName() + " -> " + evt.getNewValue());
+            if (evt.getNewValue() == IceProcessingState.COMPLETED)
             {
-                System.out.println("ICE property change: " + evt.getPropertyName() + " -> " + evt.getNewValue());
-                if (evt.getNewValue() == IceProcessingState.COMPLETED)
-                {
-                    System.out.println("ICE completed!  Starting data send");
-                    startDataLoop();
-                }
+                System.out.println("ICE completed!  Starting data send");
+                startDataLoop();
             }
         });
     }
